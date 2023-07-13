@@ -1,0 +1,194 @@
+/* -*-c++-*- */
+/* osgEarth - Geospatial SDK for OpenSceneGraph
+* Copyright 2020 Pelican Mapping
+* http://osgearth.org
+*
+* osgEarth is free software; you can redistribute it and/or modify
+* it under the terms of the GNU Lesser General Public License as published by
+* the Free Software Foundation; either version 2 of the License, or
+* (at your option) any later version.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+* AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+* IN THE SOFTWARE.
+*
+* You should have received a copy of the GNU Lesser General Public License
+* along with this program.  If not, see <http://www.gnu.org/licenses/>
+*/
+
+#ifndef OSGEARTH_GLUTILS_H
+#define OSGEARTH_GLUTILS_H 1
+
+#include <osgEarth/Common>
+#include <osgEarth/optional>
+#include <osg/StateSet>
+#include <osg/OperationThread>
+#include <osg/GraphicsContext>
+
+namespace osgEarth
+{
+    struct OSGEARTH_EXPORT GLUtils
+    {
+        //! Sets any default uniforms required by the implementation
+        static void setGlobalDefaults(osg::StateSet* stateSet);
+
+        //! Configure lighting (GL_LIGHTING)
+        static void setLighting(osg::StateSet* stateSet, osg::StateAttribute::OverrideValue ov);
+        
+        //! Configure line width (GL_LINE_WIDTH)
+        static void setLineWidth(osg::StateSet* stateSet, float value, osg::StateAttribute::OverrideValue ov);
+
+        //! Configure line stippling (GL_LINE_STIPPLE)
+        static void setLineStipple(osg::StateSet* stateSet, int factor, unsigned short pattern, osg::StateAttribute::OverrideValue ov);
+
+        //! Configure line antialiasing (GL_LINE_SMOOTH)
+        static void setLineSmooth(osg::StateSet* stateSet, osg::StateAttribute::OverrideValue ov);
+
+        //! Configure point rendering size (GL_POINT_SIZE)
+        static void setPointSize(osg::StateSet* stateSet, float value, osg::StateAttribute::OverrideValue ov);
+
+        //! Configure point rounding/antialiasing (GL_POINT_SMOOTH)
+        static void setPointSmooth(osg::StateSet* stateSet, osg::StateAttribute::OverrideValue ov);
+
+        //! Removes the state associated with a GL capability, causing it to inherit from above.
+        //! and if one of: GL_LIGHTING, GL_LINE_WIDTH, GL_LINE_STIPPLE, GL_LINE_SMOOTH, GL_POINT_SIZE
+        static void remove(osg::StateSet* stateSet, GLenum cap);
+    };
+
+    struct OSGEARTH_EXPORT CustomRealizeOperation : public osg::Operation
+    {
+        virtual void operator()(osg::Object*);
+        void setSyncToVBlank(bool);
+        optional<bool> _vsync;
+    };
+
+    struct OSGEARTH_EXPORT GL3RealizeOperation : public CustomRealizeOperation
+    {
+        virtual void operator()(osg::Object*);
+    };
+
+    struct GLBuffer : public osg::Referenced
+    {
+        mutable GLuint _handle;
+    };
+
+    /**
+     * Operation that will automatically delete a GL buffer 
+     * when its container goes out of scope
+     */
+    struct GLBufferReleaser : public osg::GraphicsOperation
+    {
+        osg::observer_ptr<GLBuffer> _buffer;
+        GLuint _handle;
+        GLBufferReleaser(GLBuffer* buffer);
+        void operator () (osg::GraphicsContext* context);
+    };
+}
+
+
+#ifndef GL_DYNAMIC_STORAGE_BIT
+#define GL_DYNAMIC_STORAGE_BIT 0x0100
+#endif
+
+#if OSG_VERSION_GREATER_OR_EQUAL(3,6,0)
+#define OE_HAVE_BINDIMAGETEXTURE
+#endif
+
+
+// OSG 3.4 POLYFILL - Copied directly from OpenSceneGraph 3.6
+#ifndef OE_HAVE_BINDIMAGETEXTURE
+namespace osg
+{
+    /** Bind texture to an image unit (available only if GL version is 4.2 or greater)
+    * The format parameter for the image unit need not exactly match the texture internal format,
+    * but if it is set to 0, the texture internal format will be used.
+    * See http://www.opengl.org/registry/specs/ARB/shader_image_load_store.txt
+    * void bindToImageUnit(unsigned int unit, GLenum access, GLenum format=0, int level=0, bool layered=false, int layer=0);
+    **/
+    class OSGEARTH_EXPORT BindImageTexture : public osg::StateAttribute {
+    public:
+        /** Type of access that will be performed on the texture image. */
+        enum Access
+        {
+            NOT_USED = 0,
+            READ_ONLY = GL_READ_ONLY_ARB,
+            WRITE_ONLY = GL_WRITE_ONLY_ARB,
+            READ_WRITE = GL_READ_WRITE_ARB
+        };
+
+        BindImageTexture(
+            GLuint imageunit = 0,
+            osg::Texture* target = 0,
+            Access access = READ_ONLY,
+            GLenum format = GL_RGBA8,
+            int level = 0,
+            bool layered = GL_FALSE,
+            int layer = 0) : osg::StateAttribute(),
+            _target(target),
+            _imageunit(imageunit),
+            _level(level),
+            _layered(layered),
+            _layer(layer),
+            _access(access),
+            _format(format) {}
+
+        BindImageTexture( const  BindImageTexture&o,osg::CopyOp op=osg::CopyOp::SHALLOW_COPY):
+            osg::StateAttribute(o,op),
+            _target(o._target),
+            _imageunit(o._imageunit),
+            _level(o._level),
+            _layered(o._layered),
+            _layer(o._layer),
+            _access(o._access),
+            _format(o._format) {}
+
+        virtual ~BindImageTexture() {}
+
+        META_StateAttribute(osg, BindImageTexture, (osg::StateAttribute::Type)62) //BINDIMAGETEXTURE)
+
+        inline void setImageUnit(GLuint i) { _imageunit=i; }
+        inline GLuint getImageUnit() const { return _imageunit; }
+
+        inline void setLevel(GLint i) { _level=i; }
+        inline GLint getLevel() const { return _level; }
+
+        inline void setIsLayered(GLboolean i) { _layered=i; }
+        inline GLboolean getIsLayered() const { return _layered; }
+
+        inline void setLayer(GLint i) { _layer=i; }
+        inline GLint getLayer() const { return _layer; }
+
+        inline void setAccess(Access i) { _access=i; }
+        inline Access getAccess() const { return _access; }
+
+        inline void setFormat(GLenum i) { _format=i; }
+        inline GLenum getFormat() const { return _format; }
+
+        inline void setTexture(osg::Texture* target) { _target=target; }
+        inline osg::Texture* getTexture() { return _target.get();}
+        inline const osg::Texture* getTexture() const { return _target.get();}
+
+        virtual void apply(osg::State&state) const;
+
+        virtual int compare(const osg::StateAttribute &sa) const;
+
+        virtual unsigned getMember() const { return static_cast<unsigned int>(_imageunit); }
+
+    protected:
+
+        osg::ref_ptr<osg::Texture> _target;
+        GLuint _imageunit;
+        GLint _level;
+        GLboolean _layered;
+        GLint _layer;
+        Access _access;
+        GLenum _format;
+    };
+}
+#endif // OE_HAVE_BINDIMAGETEXTURE
+
+#endif // OSGEARTH_GLUTILS_H
