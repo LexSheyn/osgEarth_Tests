@@ -29,3 +29,6 @@ _deps
 
 # Linux Ubuntu
 *.so
+
+# Repository
+**/lib/
